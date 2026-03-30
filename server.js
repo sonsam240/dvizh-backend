@@ -1,23 +1,21 @@
 const express = require("express");
-const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// ================== ВСТАВЬ СВОИ ДАННЫЕ ==================
+// ================== ТВОИ ДАННЫЕ ==================
 const LOGIN = "tech-dvizh@dnsgroup.ru";
 const PASSWORD = "!gHN1TDMY?";
-
-// ========================================================
+// ================================================
 
 let token = null;
 
 // ================= LOGIN =================
 async function login() {
   try {
-    console.log("🔐 Авторизация...");
+    console.log("🔐 Логин...");
 
     const res = await fetch("https://api.dvizh.io/auth/login", {
       method: "POST",
@@ -32,35 +30,38 @@ async function login() {
 
     const data = await res.json();
 
-    if (!data.token) {
-      console.error("❌ Ошибка логина:", data);
-      return;
+    if (data.token) {
+      token = data.token;
+      console.log("✅ Токен получен");
+    } else {
+      console.error("❌ Нет токена:", data);
     }
 
-    token = data.token;
-    console.log("✅ Токен получен");
-
   } catch (e) {
-    console.error("❌ Login error:", e);
+    console.error("❌ Ошибка логина:", e.message);
   }
-}
-
-// ================= ПРОВЕРКА ТОКЕНА =================
-function checkAuth(req, res, next) {
-  if (!token) {
-    return res.status(500).json({ error: "Нет токена (сервер только запустился)" });
-  }
-  next();
 }
 
 // ================= ROOT =================
 app.get("/", (req, res) => {
-  res.send("🚀 dvizh backend работает");
+  res.send("🚀 backend alive");
+});
+
+// ================= TEST =================
+app.get("/test", (req, res) => {
+  res.json({
+    status: "ok",
+    token: !!token
+  });
 });
 
 // ================= PROGRAMS =================
-app.get("/api/programs", checkAuth, async (req, res) => {
+app.get("/api/programs", async (req, res) => {
   try {
+    if (!token) {
+      return res.json({ error: "Нет токена" });
+    }
+
     const response = await fetch("https://api.dvizh.io/mortgage-programs", {
       headers: {
         Authorization: `Bearer ${token}`
@@ -71,23 +72,25 @@ app.get("/api/programs", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error("Programs error:", e);
-    res.status(500).json({ error: "Error fetching programs" });
+    console.error("Programs error:", e.message);
+    res.json({ error: "Programs error" });
   }
 });
 
 // ================= CALC =================
-app.get("/api/calc", checkAuth, async (req, res) => {
+app.get("/api/calc", async (req, res) => {
   try {
+    if (!token) {
+      return res.json({ error: "Нет токена" });
+    }
+
     const { price, initialFee, term } = req.query;
 
     if (!price || !initialFee || !term) {
-      return res.status(400).json({
+      return res.json({
         error: "Нужны параметры: price, initialFee, term"
       });
     }
-
-    console.log("📊 Запрос расчета:", price, initialFee, term);
 
     const response = await fetch("https://api.dvizh.io/mortgage/calculate", {
       method: "POST",
@@ -106,15 +109,17 @@ app.get("/api/calc", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error("Calc error:", e);
-    res.status(500).json({ error: "Calc error" });
+    console.error("Calc error:", e.message);
+    res.json({ error: "Calc error" });
   }
 });
 
 // ================= APPLY =================
-app.post("/api/apply", checkAuth, async (req, res) => {
+app.post("/api/apply", async (req, res) => {
   try {
-    console.log("📨 Отправка заявки:", req.body);
+    if (!token) {
+      return res.json({ error: "Нет токена" });
+    }
 
     const response = await fetch("https://api.dvizh.io/applications", {
       method: "POST",
@@ -129,16 +134,15 @@ app.post("/api/apply", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error("Apply error:", e);
-    res.status(500).json({ error: "Error sending application" });
+    console.error("Apply error:", e.message);
+    res.json({ error: "Apply error" });
   }
 });
 
-// ================= АВТО ОБНОВЛЕНИЕ ТОКЕНА =================
-setInterval(login, 1000 * 60 * 25); // каждые 25 минут
+// ================= START =================
+app.listen(PORT, () => {
+  console.log(`🚀 Server started on ${PORT}`);
 
-// ================= СТАРТ =================
-app.listen(PORT, async () => {
-  console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  await login();
+  login();
+  setInterval(login, 1000 * 60 * 25);
 });
