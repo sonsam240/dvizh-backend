@@ -4,44 +4,111 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
+const PORT = process.env.PORT || 3000;
+
+
+const LOGIN = "tech-dvizh@dnsgroup.ru";
+const PASSWORD = "!gHN1TDMY?";
+
 let token = null;
 
-// 🔐 Авторизация в dvizhAPI
+// ================= LOGIN =================
 async function login() {
   try {
-    const res = await fetch("https://api.dvizh.ru/auth/login", {
+    const res = await fetch("https://api.dvizh.io/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        login: "tech-dvizh@dnsgroup.ru",
-        password: "!gHN1TDMY?"
+        login: LOGIN,
+        password: PASSWORD
       })
     });
 
     const data = await res.json();
 
     if (!data.token) {
-      console.error("❌ Ошибка логина:", data);
+      console.error("❌ Login failed:", data);
       return;
     }
 
     token = data.token;
-    console.log("✅ Token получен");
+    console.log("✅ Token updated");
+
   } catch (e) {
-    console.error("❌ Login error:", e.message);
+    console.error("❌ Login error:", e);
   }
 }
 
-// 🧮 РАСЧЁТ ИПОТЕКИ (главный endpoint)
-app.post("/api/calc", async (req, res) => {
+// ================= CHECK TOKEN =================
+function checkAuth(req, res, next) {
+  if (!token) {
+    return res.status(500).json({ error: "No token yet" });
+  }
+  next();
+}
+
+// ================= ROOT =================
+app.get("/", (req, res) => {
+  res.send("🚀 dvizh backend работает");
+});
+
+// ================= PROGRAMS =================
+app.get("/api/programs", checkAuth, async (req, res) => {
   try {
-    if (!token) {
-      return res.status(500).json({ error: "Нет токена" });
+    const response = await fetch("https://api.dvizh.io/mortgage-programs", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const data = await response.json();
+    res.json(data);
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error fetching programs" });
+  }
+});
+
+// ================= CALC =================
+app.get("/api/calc", checkAuth, async (req, res) => {
+  try {
+    const { price, initialFee, term } = req.query;
+
+    if (!price || !initialFee || !term) {
+      return res.status(400).json({
+        error: "Missing params: price, initialFee, term"
+      });
     }
 
-    const response = await fetch("https://api.dvizh.ru/mortgage/calculate", {
+    const response = await fetch("https://api.dvizh.io/mortgage/calculate", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        price: Number(price),
+        initialFee: Number(initialFee),
+        term: Number(term)
+      })
+    });
+
+    const data = await response.json();
+    res.json(data);
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Calc error" });
+  }
+});
+
+// ================= APPLY =================
+app.post("/api/apply", checkAuth, async (req, res) => {
+  try {
+    const response = await fetch("https://api.dvizh.io/applications", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -51,24 +118,19 @@ app.post("/api/calc", async (req, res) => {
     });
 
     const data = await response.json();
-
-    res.json({
-      success: true,
-      data
-    });
+    res.json(data);
 
   } catch (e) {
-    res.status(500).json({
-      error: e.message
-    });
+    console.error(e);
+    res.status(500).json({ error: "Error sending application" });
   }
 });
 
-// 🔁 обновление токена
-setInterval(login, 1000 * 60 * 30);
+// ================= AUTO REFRESH TOKEN =================
+setInterval(login, 1000 * 60 * 25); // каждые 25 минут
 
-// 🚀 запуск сервера
-app.listen(3000, async () => {
+// ================= START SERVER =================
+app.listen(PORT, async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
   await login();
-  console.log("🚀 Server started on port 3000");
 });
