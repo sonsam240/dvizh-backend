@@ -1,20 +1,24 @@
-import express from "express";
-import fetch from "node-fetch";
+const express = require("express");
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-
+// ================== ВСТАВЬ СВОИ ДАННЫЕ ==================
 const LOGIN = "tech-dvizh@dnsgroup.ru";
 const PASSWORD = "!gHN1TDMY?";
+
+// ========================================================
 
 let token = null;
 
 // ================= LOGIN =================
 async function login() {
   try {
+    console.log("🔐 Авторизация...");
+
     const res = await fetch("https://api.dvizh.io/auth/login", {
       method: "POST",
       headers: {
@@ -29,22 +33,22 @@ async function login() {
     const data = await res.json();
 
     if (!data.token) {
-      console.error("❌ Login failed:", data);
+      console.error("❌ Ошибка логина:", data);
       return;
     }
 
     token = data.token;
-    console.log("✅ Token updated");
+    console.log("✅ Токен получен");
 
   } catch (e) {
     console.error("❌ Login error:", e);
   }
 }
 
-// ================= CHECK TOKEN =================
+// ================= ПРОВЕРКА ТОКЕНА =================
 function checkAuth(req, res, next) {
   if (!token) {
-    return res.status(500).json({ error: "No token yet" });
+    return res.status(500).json({ error: "Нет токена (сервер только запустился)" });
   }
   next();
 }
@@ -67,7 +71,7 @@ app.get("/api/programs", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error(e);
+    console.error("Programs error:", e);
     res.status(500).json({ error: "Error fetching programs" });
   }
 });
@@ -79,9 +83,11 @@ app.get("/api/calc", checkAuth, async (req, res) => {
 
     if (!price || !initialFee || !term) {
       return res.status(400).json({
-        error: "Missing params: price, initialFee, term"
+        error: "Нужны параметры: price, initialFee, term"
       });
     }
+
+    console.log("📊 Запрос расчета:", price, initialFee, term);
 
     const response = await fetch("https://api.dvizh.io/mortgage/calculate", {
       method: "POST",
@@ -100,7 +106,7 @@ app.get("/api/calc", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error(e);
+    console.error("Calc error:", e);
     res.status(500).json({ error: "Calc error" });
   }
 });
@@ -108,6 +114,8 @@ app.get("/api/calc", checkAuth, async (req, res) => {
 // ================= APPLY =================
 app.post("/api/apply", checkAuth, async (req, res) => {
   try {
+    console.log("📨 Отправка заявки:", req.body);
+
     const response = await fetch("https://api.dvizh.io/applications", {
       method: "POST",
       headers: {
@@ -121,16 +129,16 @@ app.post("/api/apply", checkAuth, async (req, res) => {
     res.json(data);
 
   } catch (e) {
-    console.error(e);
+    console.error("Apply error:", e);
     res.status(500).json({ error: "Error sending application" });
   }
 });
 
-// ================= AUTO REFRESH TOKEN =================
+// ================= АВТО ОБНОВЛЕНИЕ ТОКЕНА =================
 setInterval(login, 1000 * 60 * 25); // каждые 25 минут
 
-// ================= START SERVER =================
+// ================= СТАРТ =================
 app.listen(PORT, async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Сервер запущен на порту ${PORT}`);
   await login();
 });
