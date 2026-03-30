@@ -1,68 +1,50 @@
-const express = require("express");
+import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// ================== ТВОИ ДАННЫЕ ==================
-const LOGIN = "tech-dvizh@dnsgroup.ru";
-const PASSWORD = "!gHN1TDMY?";
-// ================================================
-
 let token = null;
 
-// ================= LOGIN =================
+// 🔐 Авторизация
 async function login() {
   try {
-    console.log("🔐 Логин...");
-
-    const res = await fetch("https://api.dvizh.io/auth/login", {
+    const res = await fetch("https://dvizh.io/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        login: LOGIN,
-        password: PASSWORD
+        login: process.env.DVIZH_LOGIN,
+        password: process.env.DVIZH_PASSWORD
       })
     });
 
     const data = await res.json();
 
-    if (data.token) {
-      token = data.token;
-      console.log("✅ Токен получен");
-    } else {
-      console.error("❌ Нет токена:", data);
+    if (!data.token) {
+      console.error("❌ No token:", data);
+      return;
     }
 
+    token = data.token;
+    console.log("✅ Token updated");
   } catch (e) {
-    console.error("❌ Ошибка логина:", e.message);
+    console.error("❌ Login error:", e.message);
   }
 }
 
-// ================= ROOT =================
+// 📌 Проверка сервера
 app.get("/", (req, res) => {
-  res.send("🚀 backend alive");
+  res.send("Server is working 🚀");
 });
 
-// ================= TEST =================
-app.get("/test", (req, res) => {
-  res.json({
-    status: "ok",
-    token: !!token
-  });
-});
-
-// ================= PROGRAMS =================
+// 📌 Получить программы
 app.get("/api/programs", async (req, res) => {
   try {
-    if (!token) {
-      return res.json({ error: "Нет токена" });
-    }
-
-    const response = await fetch("https://api.dvizh.io/mortgage-programs", {
+    const response = await fetch("https://dvizh.io/mortgage-programs", {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -70,58 +52,16 @@ app.get("/api/programs", async (req, res) => {
 
     const data = await response.json();
     res.json(data);
-
   } catch (e) {
-    console.error("Programs error:", e.message);
-    res.json({ error: "Programs error" });
+    console.error(e);
+    res.status(500).json({ error: "Error fetching programs" });
   }
 });
 
-// ================= CALC =================
-app.get("/api/calc", async (req, res) => {
+// 📌 КАЛЬКУЛЯТОР (ТО, ЧЕГО У ТЕБЯ НЕ БЫЛО)
+app.post("/api/calc", async (req, res) => {
   try {
-    if (!token) {
-      return res.json({ error: "Нет токена" });
-    }
-
-    const { price, initialFee, term } = req.query;
-
-    if (!price || !initialFee || !term) {
-      return res.json({
-        error: "Нужны параметры: price, initialFee, term"
-      });
-    }
-
-    const response = await fetch("https://api.dvizh.io/mortgage/calculate", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        price: Number(price),
-        initialFee: Number(initialFee),
-        term: Number(term)
-      })
-    });
-
-    const data = await response.json();
-    res.json(data);
-
-  } catch (e) {
-    console.error("Calc error:", e.message);
-    res.json({ error: "Calc error" });
-  }
-});
-
-// ================= APPLY =================
-app.post("/api/apply", async (req, res) => {
-  try {
-    if (!token) {
-      return res.json({ error: "Нет токена" });
-    }
-
-    const response = await fetch("https://api.dvizh.io/applications", {
+    const response = await fetch("https://dvizh.io/mortgage/calculate", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -132,17 +72,37 @@ app.post("/api/apply", async (req, res) => {
 
     const data = await response.json();
     res.json(data);
-
   } catch (e) {
-    console.error("Apply error:", e.message);
-    res.json({ error: "Apply error" });
+    console.error(e);
+    res.status(500).json({ error: "Calc error" });
   }
 });
 
-// ================= START =================
-app.listen(PORT, () => {
-  console.log(`🚀 Server started on ${PORT}`);
+// 📌 Отправка заявки
+app.post("/api/apply", async (req, res) => {
+  try {
+    const response = await fetch("https://dvizh.io/applications", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(req.body)
+    });
 
-  login();
-  setInterval(login, 1000 * 60 * 25);
+    const data = await response.json();
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error sending application" });
+  }
+});
+
+// 🔁 Обновление токена
+setInterval(login, 1000 * 60 * 25);
+
+// 🚀 Старт сервера
+app.listen(PORT, async () => {
+  console.log(`🔥 Server running on port ${PORT}`);
+  await login();
 });
